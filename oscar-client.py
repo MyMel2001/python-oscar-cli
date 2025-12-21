@@ -3,24 +3,37 @@ import asyncio
 import argparse
 import logging
 import sys
+import os
 from rich.console import Console
 from rich.prompt import Prompt
 from aimpyfly import aim_client
 
+# 1. Setup Console
 console = Console()
 
-# Set library logging to WARNING to prevent "keep-alive" spam in the UI
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s [%(levelname)s]: %(message)s')
-logger = logging.getLogger("aimpyfly")
-logger.setLevel(logging.WARNING)
+# 2. SILENCE ALL LOGGING
+# This prevents the SNAC warnings and keep-alive info from breaking the prompt.
+# We send them to 'aim_debug.log' instead so you can still read them if you want.
+logging.basicConfig(
+    level=logging.DEBUG,
+    filename='aim_debug.log',
+    filemode='w',
+    format='%(asctime)s [%(levelname)s]: %(message)s'
+)
+# Completely block logs from hitting the terminal
+for handler in logging.root.handlers[:]:
+    if not isinstance(handler, logging.FileHandler):
+        logging.root.removeHandler(handler)
 
 async def message_received(sender, message):
-    # Print on a new line to avoid clashing with the prompt
-    console.print(f"\n[bold green]{sender}:[/] {message}")
+    # Use console.print to cleanly break the prompt line
+    console.print(f"\r[bold green]{sender}:[/] {message}")
 
 async def ainput(prompt: str) -> str:
-    """Run the blocking rich prompt in a thread to keep the loop alive."""
+    """Run the prompt in a way that doesn't get spammed."""
     loop = asyncio.get_event_loop()
+    # We add a tiny sleep to let the event loop breathe
+    await asyncio.sleep(0.1)
     return await loop.run_in_executor(None, lambda: Prompt.ask(prompt))
 
 async def main(args):
@@ -29,62 +42,60 @@ async def main(args):
         port=args.port,
         username=args.username,
         password=args.password,
-        loglevel=logging.WARNING # Keep internal logs quiet
+        loglevel=logging.DEBUG # Log to file, not screen
     )
     client.set_message_callback(message_received)
 
-    # 1. Connect and handle the BOS redirection
     try:
         console.print(f"[yellow]Connecting to {args.server}...[/]")
         await client.connect()
         
-        # Check if BOS connection actually succeeded
+        # Verify connection safety
         if not hasattr(client, 'writer') or client.writer is None or client.writer.is_closing():
-            console.print("[bold red]Error: Connection established but BOS handshake failed.[/]")
-            console.print("[red]Hint: Check if your server is redirecting to 0.0.0.0 instead of its real IP.[/]")
+            console.print("[bold red]Connection failed: BOS redirection issue (likely 0.0.0.0).[/]")
             return
             
-        console.print("[bold blue]Connected successfully![/]")
+        console.print("[bold blue]Connected! (Type /help for commands)[/]")
     except Exception as e:
         console.print(f"[bold red]Connection failed: {e}[/]")
         return
 
-    # 2. Start the background packet processor
+    # Start the packet processor in the background
     processing_task = asyncio.create_task(client.process_incoming_packets())
 
-    # 3. Main Input Loop
     while not processing_task.done():
         try:
-            # We wait for input. If the background task dies, we want to know.
-            # Using a timeout allows us to check the status of the connection.
-            input_str = await asyncio.wait_for(ainput("> "), timeout=1.0)
+            # We use a slightly longer timeout to reduce prompt jitter
+            input_str = await asyncio.wait_for(ainput(">"), timeout=2.0)
             
             if not input_str:
                 continue
-            if input_str.strip().lower() == "/quit":
+                
+            cmd = input_str.strip()
+            if cmd.lower() == "/quit":
                 break
-            elif input_str.strip().lower() == "/help":
+            elif cmd.lower() == "/help":
                 console.print("[bold yellow]Commands:[/]\n/quit - exit\nrecipient:message - send message")
                 continue
-            elif ":" not in input_str:
+            elif ":" not in cmd:
                 console.print("[bold red]Invalid format. Use recipient:message[/]")
                 continue
 
-            recipient, message = input_str.split(":", 1)
+            recipient, message = cmd.split(":", 1)
             await client.send_message(recipient.strip(), message.strip())
-            console.print(f"[bold cyan]You to {recipient.strip()}:[/] {message.strip()}")
+            console.print(f"[bold cyan]Sent to {recipient.strip()}:[/] {message.strip()}")
 
         except asyncio.TimeoutError:
-            # Just loop back and check if the processing_task is still alive
             continue
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
             break
         except Exception as e:
+            # Check if connection died
+            if processing_task.done():
+                break
             console.print(f"[bold red]Error: {e}[/]")
-            break
 
-    # 4. Cleanup
-    console.print("[bold blue]Shutting down...[/]")
+    console.print("\n[bold blue]Disconnecting...[/]")
     processing_task.cancel()
     try:
         await processing_task
@@ -102,4 +113,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main(args))
     except KeyboardInterrupt:
-        sys.exit(0)
+        pass
