@@ -113,7 +113,7 @@ async def main(args):
                 console.print(f"[dim][{time_str}][/] [bold cyan]You to {r_clean}:[/] {m_clean}")
             
             else:
-                console.print("[red]Format: recipient:message or /away message[/]")
+                console.print("[red]Format: recipient:message , /away message , back or /quit[/]")
 
         except Exception as e:
             break
