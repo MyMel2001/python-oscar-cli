@@ -4,7 +4,7 @@ import argparse
 import logging
 import sys
 import datetime
-import struct
+import time
 from rich.console import Console
 
 # Silence standard logs
@@ -17,7 +17,10 @@ chat_log_file = "chat_log.txt"
 # --- GLOBAL STATE ---
 is_away = False
 away_message = ""
-responded_buddies = set() # To prevent auto-reply loops
+# Dictionary to store {buddy_name: last_reply_timestamp}
+responded_buddies = {} 
+# Cooldown in seconds (e.g., 300 seconds = 5 minutes)
+AUTO_REPLY_COOLDOWN = 300 
 current_client = None
 
 def log_chat(text):
@@ -31,18 +34,21 @@ async def message_received(sender, message):
     time_str = datetime.datetime.now().strftime("%H:%M:%S")
     log_chat(f"{sender}: {message}")
     
-    # 1. Print the message
+    # 1. Print the incoming message
     sys.stdout.write("\r\033[K") 
     console.print(f"[dim][{time_str}][/] [bold green]{sender}:[/] {message}")
     sys.stdout.write("> ")
     sys.stdout.flush()
 
-    # 2. MANUAL AUTO-RESPONDER LOGIC
-    if is_away and sender not in responded_buddies:
-        if current_client:
-            # Send the away message back to the sender
+    # 2. IMPROVED AUTO-RESPONDER LOGIC
+    if is_away and current_client:
+        current_time = time.time()
+        last_reply_time = responded_buddies.get(sender, 0)
+
+        # Check if we've never replied OR if the cooldown has passed
+        if (current_time - last_reply_time) > AUTO_REPLY_COOLDOWN:
             await current_client.send_message(sender, f"[Auto-Reply] {away_message}")
-            responded_buddies.add(sender)
+            responded_buddies[sender] = current_time
             log_chat(f"Auto-Replied to {sender}: {away_message}")
 
 async def get_input():
@@ -63,7 +69,7 @@ async def main(args):
     try:
         console.print(f"[yellow]Connecting to {args.server}...[/]")
         await current_client.connect()
-        console.print("[bold blue]Connected![/] Auto-Responder active. Use /away <msg>")
+        console.print("[bold blue]Connected![/] Away format: /away <msg>")
     except Exception as e:
         console.print(f"[bold red]Connection failed: {e}[/]")
         return
@@ -80,7 +86,7 @@ async def main(args):
             cmd = line.strip()
             if not cmd: continue
 
-            # Reset Away Status if the user sends ANY message
+            # Reset Away Status if the user sends ANY manual message
             if is_away and not cmd.startswith("/"):
                 is_away = False
                 responded_buddies.clear()
@@ -92,7 +98,7 @@ async def main(args):
             elif cmd.lower().startswith("/away "):
                 away_message = cmd[6:].strip()
                 is_away = True
-                responded_buddies.clear() # Reset so we can reply to everyone once
+                responded_buddies.clear() 
                 console.print(f"[bold yellow]Away status active:[/] {away_message}")
 
             elif cmd.lower() == "/back":
@@ -108,12 +114,13 @@ async def main(args):
                 await current_client.send_message(r_clean, m_clean)
                 log_chat(f"You to {r_clean}: {m_clean}")
                 
+                # Visual cleanup
                 time_str = datetime.datetime.now().strftime("%H:%M:%S")
-                sys.stdout.write("\033[F\033[K") # Clear the line typed
+                sys.stdout.write("\033[F\033[K") 
                 console.print(f"[dim][{time_str}][/] [bold cyan]You to {r_clean}:[/] {m_clean}")
             
             else:
-                console.print("[red]Format: recipient:message , /away message , back or /quit[/]")
+                console.print("[red]Format: recipient:message , /away message , /back or /quit[/]")
 
         except Exception as e:
             break
