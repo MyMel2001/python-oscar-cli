@@ -25,13 +25,22 @@ console = Console()
 async def message_received(sender, message):
     console.print(f"[bold green]{sender}:[/] {message}")
 
+async def process_wrapper(client):
+    try:
+        await client.process_incoming_packets()
+    except Exception as e:
+        console.print(f"[bold red]Processing failed: {e}. Disconnecting.[/]")
+        raise  # Re-raise to mark task as errored
+
+processing_task = asyncio.create_task(process_wrapper(client))
+
 async def main(args):
     client = aim_client.AIMClient(
         server=args.server,
         port=args.port,
         username=args.username,
         password=args.password,
-        loglevel=logging.INFO
+        loglevel=logging.CRITICAL
     )
     client.set_message_callback(message_received)
     
@@ -47,6 +56,10 @@ async def main(args):
 
     # Interactive loop for user input
     while True:
+        if processing_task.done() and processing_task.exception():
+            console.print("[bold red]Connection lost. Exiting.[/]")
+            break
+
         try:
             input_str = await ainput("> ")
             if input_str.startswith("/quit"):
