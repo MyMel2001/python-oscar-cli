@@ -27,8 +27,42 @@ async def main(args):
         await client.connect()
         console.print("[bold blue]Connected successfully![/]")
     except Exception as e:
-        console.print(f"[bold red]Connection failed: {e}[/]")
+        console.print(f"[bold red]Initial connection failed: {e}[/]")
         return
+
+    # Create the task for processing
+    processing_task = asyncio.create_task(client.process_incoming_packets())
+
+    while True:
+        # Check if the processing task died (e.g., due to Broken Pipe)
+        if processing_task.done():
+            try:
+                # This will raise the actual error that killed the task
+                processing_task.result()
+            except Exception as e:
+                console.print(f"\n[bold red]Connection lost (Broken Pipe): {e}[/]")
+                console.print("[yellow]Attempting to reconnect in 5 seconds...[/]")
+                await asyncio.sleep(5)
+                # You could add logic here to call client.connect() again
+                break # For now, let's exit so you can debug the server logs
+
+        try:
+            # We use a timeout so the loop can check if the connection is still alive
+            input_str = await asyncio.wait_for(ainput("> "), timeout=1.0)
+            
+            if not input_str: continue
+            if input_str.startswith("/quit"): break
+            
+            # ... (Rest of your message sending logic) ...
+
+        except asyncio.TimeoutError:
+            # Just a heartbeat to check if processing_task is still running
+            continue
+        except Exception as e:
+            console.print(f"[bold red]Input Error: {e}[/]")
+            break
+
+    processing_task.cancel()
 
     # 2. START PROCESSING ONLY AFTER CONNECTED
     # The 'reader' attribute is now initialized within the client
