@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""
-Alternative CLI client for OSCAR (AIM) protocol using aimpyfly library.
-Requires: pip install aimpyfly rich
-
-Usage: python aim_cli.py --server <server> --port <port> --username <username> --password <password>
-
-Once connected, type messages in the format: recipient:message
-Type /quit to exit.
-Type /help for commands.
-
-Cross-platform, easy-to-use with rich formatting for better looks.
-"""
-
 import asyncio
 import argparse
 import logging
@@ -23,15 +10,7 @@ from aimpyfly import aim_client
 console = Console()
 
 async def message_received(sender, message):
-    console.print(f"[bold green]{sender}:[/] {message}")
-
-async def process_wrapper(client):
-    try:
-        await client.process_incoming_packets()
-    except Exception as e:
-        console.print(f"[bold red]Processing failed: {e}. Disconnecting.[/]")
-        raise  # Re-raise to mark task as errored
-
+    console.print(f"\n[bold green]{sender}:[/] {message}")
 
 async def main(args):
     client = aim_client.AIMClient(
@@ -39,12 +18,11 @@ async def main(args):
         port=args.port,
         username=args.username,
         password=args.password,
-        loglevel=logging.DEBUG
+        loglevel=logging.INFO # Changed to INFO to reduce spam, set to DEBUG if needed
     )
     client.set_message_callback(message_received)
 
-    processing_task = asyncio.create_task(process_wrapper(client))
-    
+    # 1. CONNECT FIRST
     try:
         await client.connect()
         console.print("[bold blue]Connected successfully![/]")
@@ -52,17 +30,20 @@ async def main(args):
         console.print(f"[bold red]Connection failed: {e}[/]")
         return
 
-    # Task for processing incoming packets
+    # 2. START PROCESSING ONLY AFTER CONNECTED
+    # The 'reader' attribute is now initialized within the client
     processing_task = asyncio.create_task(client.process_incoming_packets())
 
     # Interactive loop for user input
     while True:
         try:
             input_str = await ainput("> ")
+            if not input_str:
+                continue
             if input_str.startswith("/quit"):
                 break
             elif input_str.startswith("/help"):
-                console.print("[bold yellow]Commands:[/]\n/quit - exit\n recipient:message - send message")
+                console.print("[bold yellow]Commands:[/]\n/quit - exit\nrecipient:message - send message")
                 continue
             elif ":" not in input_str:
                 console.print("[bold red]Invalid format. Use recipient:message[/]")
@@ -71,14 +52,21 @@ async def main(args):
             recipient, message = input_str.split(":", 1)
             await client.send_message(recipient.strip(), message.strip())
             console.print(f"[bold cyan]You to {recipient}:[/] {message.strip()}")
-        except EOFError:
+        except asyncio.CancelledError:
             break
+        except Exception as e:
+            console.print(f"[bold red]Error: {e}[/]")
 
+    # 3. CLEANUP
     processing_task.cancel()
+    try:
+        await processing_task
+    except asyncio.CancelledError:
+        pass
     console.print("[bold blue]Disconnecting...[/]")
 
-# Async input function
 async def ainput(prompt: str) -> str:
+    # Use run_in_executor to prevent blocking the event loop while waiting for typing
     return await asyncio.get_event_loop().run_in_executor(None, lambda: Prompt.ask(prompt))
 
 if __name__ == "__main__":
@@ -89,4 +77,7 @@ if __name__ == "__main__":
     parser.add_argument("--password", required=True, help="Password")
     args = parser.parse_args()
 
-    asyncio.run(main(args))
+    try:
+        asyncio.run(main(args))
+    except KeyboardInterrupt:
+        pass
