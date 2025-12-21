@@ -1,2 +1,2 @@
-aimpyfly
-rich
+aimpyfly==0.1.1
+rich==14.2.0
