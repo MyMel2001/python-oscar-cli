@@ -32,7 +32,6 @@ async def process_wrapper(client):
         console.print(f"[bold red]Processing failed: {e}. Disconnecting.[/]")
         raise  # Re-raise to mark task as errored
 
-processing_task = asyncio.create_task(process_wrapper(client))
 
 async def main(args):
     client = aim_client.AIMClient(
@@ -43,6 +42,8 @@ async def main(args):
         loglevel=logging.CRITICAL
     )
     client.set_message_callback(message_received)
+
+    processing_task = asyncio.create_task(process_wrapper(client))
     
     try:
         await client.connect()
