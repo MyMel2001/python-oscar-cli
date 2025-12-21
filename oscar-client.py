@@ -57,10 +57,6 @@ async def main(args):
 
     # Interactive loop for user input
     while True:
-        if processing_task.done() and processing_task.exception():
-            console.print("[bold red]Connection lost. Exiting.[/]")
-            break
-
         try:
             input_str = await ainput("> ")
             if input_str.startswith("/quit"):
