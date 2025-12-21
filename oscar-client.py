@@ -39,7 +39,7 @@ async def main(args):
         port=args.port,
         username=args.username,
         password=args.password,
-        loglevel=logging.CRITICAL
+        loglevel=logging.DEBUG
     )
     client.set_message_callback(message_received)
 
