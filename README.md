@@ -17,7 +17,7 @@ A simple command-line interface (CLI) client for AOL Instant Messenger (AIM) usi
 
 ## Requirements
 
-- Python 3.6+
+- Python 3.12+
 - Dependencies:
   - `aimpyfly`: For OSCAR protocol handling.
   - `rich`: For enhanced console output.
