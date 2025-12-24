@@ -15,6 +15,12 @@ A simple command-line interface (CLI) client for AOL Instant Messenger (AIM) usi
 - Colorful console output using the `rich` library.
 - Automatic reset of away status when sending manual messages.
 
+## Screenshots
+* <img width="50%" alt="User 1's end" src="https://github.com/user-attachments/assets/795923a9-358e-4cb0-b90e-82186be08418" />
+* <img width="46%" alt="Second user's end" src="https://github.com/user-attachments/assets/867bf6bf-0204-4cc1-a731-29b36cd8b12b" />
+
+
+
 ## Requirements
 
 - Python 3.12+
